@@ -1,0 +1,925 @@
+Tengo una app con este arbol: 
+├── package.json
+├── public
+│   ├── css
+│   │   └── styles.css
+│   ├── index.html
+│   ├── js
+│   │   ├── app.js
+│   │   ├── chat.js
+│   │   ├── login.js
+│   │   ├── sleepDiary.js
+│   │   └── ui.js
+│   └── login.html
+└── src
+    ├── middleware
+    │   └── auth.js
+    ├── routes
+    │   ├── data.js
+    │   ├── login.js
+    │   └── users.js
+    └── server.js
+    
+    Los archivos uno por uno son los siguientes. 
+    - Package.json: 
+    {
+  "name": "sleep-diary",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Ana Belén",
+  "license": "ISC",
+  "description": "A smart sleep diary application",
+  
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  },
+  "dependencies": {
+    "next": "^15.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^8.5.1",
+    "dotenv": "^10.0.0"
+  }
+}
+
+-styles.css: 
+:root {
+    --bg-color: #ffffff;
+    --text-color: #333333;
+    --primary-color: #4a90e2;
+    --secondary-color: #f0f0f0;
+    --border-color: #e0e0e0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-color);
+    background-color: var(--bg-color);
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1, h2 {
+    color: var(--primary-color);
+}
+
+.section {
+    background-color: var(--secondary-color);
+    border-radius: 5px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+}
+
+input, button {
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+}
+
+button {
+    background-color: var(--primary-color);
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #3a7bc8;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    text-align: left;
+}
+
+.chat-messages {
+    height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.user-message, .ai-message {
+    margin-bottom: 10px;
+    padding: 5px 10px;
+    border-radius: 5px;
+}
+
+.user-message {
+    background-color: #e6f2ff;
+    align-self: flex-end;
+}
+
+.ai-message {
+    background-color: #f0f0f0;
+    align-self: flex-start;
+}
+
+.dark-mode-toggle {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+body.dark-mode {
+    --bg-color: #1a1a1a;
+    --text-color: #f0f0f0;
+    --primary-color: #64b5f6;
+    --secondary-color: #2c2c2c;
+    --border-color: #444444;
+}
+
+-app.js: 
+import { sleepDiary } from './sleepDiary.js';
+import { ui } from './ui.js';
+import { chat } from './chat.js';
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('userId');
+
+    if (!token || !userId) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    try {
+        console.log('Initializing sleepDiary...');
+        await sleepDiary.init(token);
+        console.log('Initializing UI...');
+        ui.init();
+        console.log('Initializing chat...');
+        chat.init();
+        console.log('All modules initialized successfully.');
+
+        // Mostrar información del usuario
+        const userInfo = document.getElementById('user-info');
+        userInfo.textContent = `Usuario conectado: ID ${userId}`;
+
+        // Configurar el botón de cierre de sesión
+        const logoutButton = document.getElementById('logout-button');
+        logoutButton.style.display = 'block';
+        logoutButton.addEventListener('click', () => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userId');
+            window.location.href = 'login.html';
+        });
+    } catch (error) {
+        console.error('Error initializing application:', error);
+    }
+});
+
+-chat.js
+export const chat = {
+    init() {
+        this.initializeChat();
+    },
+
+    initializeChat() {
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const chatMessages = document.getElementById('chat-messages');
+
+        chatForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = chatInput.value.trim();
+
+            if (message) {
+                this.addMessage(message, 'user-message');
+                this.generateAIResponse(message);
+                chatInput.value = '';
+            }
+        });
+    },
+
+    addMessage(message, className) {
+        const chatMessages = document.getElementById('chat-messages');
+        const messageElement = document.createElement('div');
+        messageElement.classList.add(className);
+        messageElement.textContent = message;
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    },
+
+    generateAIResponse(userMessage) {
+        const lowerMessage = userMessage.toLowerCase();
+        const responses = {
+            'hola': [
+                'Hola, soy tu Asistente de Sueño. ¿En qué puedo ayudarte hoy?',
+                '¡Bienvenido! Estoy aquí para ayudarte a mejorar tu sueño. ¿Tienes alguna pregunta específica?'
+            ],
+            'dormir': [
+                'Dormir bien es crucial para tu salud. ¿Tienes problemas para conciliar el sueño o mantenerte dormido?',
+                'Un buen sueño es la base de una vida saludable. ¿Qué aspectos de tu sueño te gustaría mejorar?'
+            ],
+            'insomnio': [
+                'El insomnio puede ser frustrante. Algunas estrategias útiles incluyen mantener un horario regular, crear un ambiente relajante y practicar técnicas de relajación. ¿Has probado alguna de estas?',
+                'Combatir el insomnio requiere paciencia. Podemos trabajar en identificar las causas y desarrollar un plan personalizado. ¿Cuánto tiempo llevas experimentando insomnio?'
+            ],
+            'consejos': [
+                'Algunos consejos generales para mejorar tu sueño incluyen: mantener un horario regular, crear un ambiente oscuro y fresco, evitar la cafeína y el alcohol antes de dormir, y practicar una rutina relajante antes de acostarte. ¿Cuál de estos te gustaría explorar más?',
+                'Para mejorar tu sueño, considera limitar el uso de dispositivos electrónicos antes de dormir, hacer ejercicio regularmente (pero no justo antes de acostarte), y manejar el estrés con técnicas de relajación. ¿Alguno de estos consejos te llama la atención?'
+            ],
+            'gracias': [
+                '¡De nada! Recuerda que mejorar tus hábitos de sueño es un proceso. Si tienes más preguntas en el futuro, no dudes en consultarme.',
+                'Es un placer ayudarte. Recuerda que un buen sueño es clave para tu salud física y mental. ¿Hay algo más en lo que pueda ayudarte?'
+            ]
+        };
+
+        let response = 'Entiendo que tienes una pregunta sobre el sueño. ¿Podrías ser más específico sobre qué aspecto te interesa o preocupa?';
+
+        for (let [keyword, responseOptions] of Object.entries(responses)) {
+            if (lowerMessage.includes(keyword)) {
+                response = responseOptions[Math.floor(Math.random() * responseOptions.length)];
+                break;
+            }
+        }
+
+        setTimeout(() => {
+            this.addMessage(response, 'ai-message');
+        }, 1000);
+    }
+};
+
+-login.js
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('login-form');
+    const errorMessage = document.getElementById('error-message');
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username, password }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                console.log('Login successful:', data);
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('userId', data.userId);
+                window.location.href = 'index.html';
+            } else {
+                console.error('Login failed:', data.message);
+                errorMessage.textContent = data.message || 'Credenciales inválidas';
+            }
+        } catch (error) {
+            console.error('Error during login:', error);
+            errorMessage.textContent = 'Error al iniciar sesión';
+        }
+    });
+});
+
+-sleepdiary.js: 
+export const sleepDiary = {
+    sleepEntries: [],
+    token: null,
+
+    async init(token) {
+        this.token = token;
+        await this.loadEntries();
+    },
+
+    async loadEntries() {
+        try {
+            const response = await fetch('/api/data', {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                this.sleepEntries = data.sleepEntries || [];
+            } else {
+                console.error('Failed to load sleep entries');
+            }
+        } catch (error) {
+            console.error('Error loading sleep entries:', error);
+        }
+    },
+
+    async addEntry(entry) {
+        try {
+            const response = await fetch('/api/data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify(entry)
+            });
+            if (response.ok) {
+                this.sleepEntries.push(entry);
+            } else {
+                console.error('Failed to add sleep entry');
+            }
+        } catch (error) {
+            console.error('Error adding sleep entry:', error);
+        }
+    },
+
+    calculateStatistics() {
+        if (this.sleepEntries.length === 0) return null;
+
+        const totalDuration = this.sleepEntries.reduce((sum, entry) => sum + entry.duration, 0);
+        const totalQuality = this.sleepEntries.reduce((sum, entry) => sum + entry.quality, 0);
+        const avgDuration = totalDuration / this.sleepEntries.length;
+        const avgQuality = totalQuality / this.sleepEntries.length;
+
+        const lastWeekEntries = this.sleepEntries.filter(entry => {
+            const entryDate = new Date(entry.date);
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return entryDate >= weekAgo;
+        });
+
+        const weeklyAvgDuration = lastWeekEntries.reduce((sum, entry) => sum + entry.duration, 0) / lastWeekEntries.length || 0;
+
+        return {
+            avgDuration: avgDuration.toFixed(2),
+            avgQuality: avgQuality.toFixed(2),
+            totalEntries: this.sleepEntries.length,
+            weeklyAvgDuration: weeklyAvgDuration.toFixed(2)
+        };
+    },
+
+    generatePersonalizedTips(entry) {
+        let tips = [];
+        const stats = this.calculateStatistics();
+
+        if (entry.duration < 6) {
+            tips.push('Parece que dormiste poco. Intenta acostarte más temprano esta noche.');
+        } else if (entry.duration > 9) {
+            tips.push('Dormiste más de lo recomendado. Considera ajustar tu horario de sueño.');
+        }
+
+        if (entry.quality < 3) {
+            tips.push('Tu calidad de sueño puede mejorar. Prueba técnicas de relajación antes de dormir.');
+        } else if (entry.quality >= 4) {
+            tips.push('¡Buen trabajo! Mantén tus hábitos de sueño actuales.');
+        }
+
+        if (stats) {
+            if (entry.duration < stats.avgDuration) {
+                tips.push(`Dormiste menos que tu promedio de ${stats.avgDuration} horas. Intenta mantener un horario más consistente.`);
+            }
+            if (entry.quality < stats.avgQuality) {
+                tips.push(`La calidad de tu sueño fue menor que tu promedio de ${stats.avgQuality}. Considera factores que puedan estar afectando tu descanso.`);
+            }
+        }
+
+        return tips;
+    }
+};
+
+-ui.js
+import { sleepDiary } from './sleepDiary.js';
+
+export const ui = {
+    init() {
+        this.bindEvents();
+        this.renderSleepHistory();
+        this.loadScheduledTips();
+        this.startNextTipCountdown();
+        this.renderSleepStatistics();
+        this.initDarkMode();
+    },
+
+    bindEvents() {
+        const sleepForm = document.getElementById('sleep-form');
+        sleepForm.addEventListener('submit', this.handleSleepFormSubmit.bind(this));
+    },
+
+    handleSleepFormSubmit(event) {
+        event.preventDefault();
+        
+        const sleepDate = document.getElementById('sleep-date').value;
+        const sleepDuration = document.getElementById('sleep-duration').value;
+        const sleepQuality = document.querySelector('input[name="sleep-quality"]:checked').value;
+
+        const entry = {
+            date: sleepDate,
+            duration: parseFloat(sleepDuration),
+            quality: parseInt(sleepQuality)
+        };
+
+        sleepDiary.addEntry(entry);
+        this.showPersonalizedTips(entry);
+        this.renderSleepHistory();
+        this.renderSleepStatistics();
+        this.clearForm();
+    },
+
+    showPersonalizedTips(entry) {
+        const consejosContainer = document.getElementById('consejos-content');
+        consejosContainer.innerHTML = '';
+
+        const tips = sleepDiary.generatePersonalizedTips(entry);
+
+        tips.forEach(tip => {
+            const tipElement = document.createElement('p');
+            tipElement.textContent = tip;
+            consejosContainer.appendChild(tipElement);
+        });
+    },
+
+    renderSleepHistory() {
+        const historyBody = document.getElementById('historial-body');
+        historyBody.innerHTML = '';
+
+        sleepDiary.sleepEntries.forEach(entry => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${entry.date}</td>
+                <td>${entry.duration} horas</td>
+                <td>${entry.quality}/5</td>
+            `;
+            historyBody.appendChild(row);
+        });
+    },
+
+    clearForm() {
+        document.getElementById('sleep-form').reset();
+    },
+
+    loadScheduledTips() {
+        // Agregar franjas horarias para los consejos
+        const scheduledTips = [
+            { time: 'morning', tip: 'Evita cafeína después de las 3 PM' },
+            { time: 'morning', tip: 'Establece un horario de sueño consistente' },
+            { time: 'afternoon', tip: 'Crea un ambiente oscuro y fresco para dormir' },
+            { time: 'afternoon', tip: 'Practica técnicas de respiración antes de dormir' },
+            { time: 'night', tip: 'No uses dispositivos electrónicos antes de dormir' },
+            { time: 'night', tip: 'Evita cenas pesadas antes de acostarte' }
+        ];
+
+        const currentTime = new Date().getHours(); // Hora actual
+        const currentTipContainer = document.getElementById('lista-consejos-programados');
+        currentTipContainer.innerHTML = '';
+
+        // Filtrar los consejos según la franja horaria actual
+        let currentTimePeriod = '';
+        if (currentTime >= 6 && currentTime < 12) {
+            currentTimePeriod = 'morning'; // Mañana
+        } else if (currentTime >= 12 && currentTime < 18) {
+            currentTimePeriod = 'afternoon'; // Tarde
+        } else {
+            currentTimePeriod = 'night'; // Noche
+        }
+
+        // Filtrar y mostrar solo los consejos de la franja horaria actual
+        scheduledTips
+            .filter(tip => tip.time === currentTimePeriod)
+            .forEach(tip => {
+                const tipElement = document.createElement('p');
+                tipElement.textContent = tip.tip;
+                currentTipContainer.appendChild(tipElement);
+            });
+    },
+
+    startNextTipCountdown() {
+        const counterElement = document.getElementById('contador-proximo-consejo');
+        
+        const updateCountdown = () => {
+            const now = new Date();
+            const nextTip = new Date();
+            nextTip.setHours(22, 0, 0, 0);
+
+            if (now > nextTip) {
+                nextTip.setDate(nextTip.getDate() + 1);
+            }
+
+            const difference = nextTip - now;
+            const hours = Math.floor(difference / (1000 * 60 * 60));
+            const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+            counterElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        };
+
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+    },
+
+    renderSleepStatistics() {
+        const stats = sleepDiary.calculateStatistics();
+        const statsContainer = document.getElementById('estadisticas-content');
+        
+        if (stats) {
+            statsContainer.innerHTML = `
+                <p>Duración promedio: ${stats.avgDuration} horas</p>
+                <p>Calidad promedio: ${stats.avgQuality}/5</p>
+                <p>Total de entradas: ${stats.totalEntries}</p>
+                <p>Promedio semanal: ${stats.weeklyAvgDuration} horas</p>
+            `;
+        } else {
+            statsContainer.innerHTML = '<p>No hay suficientes datos para mostrar estadísticas.</p>';
+        }
+    },
+
+    initDarkMode() {
+        const darkModeToggle = document.getElementById('dark-mode-toggle');
+        const body = document.body;
+
+        darkModeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', body.classList.contains('dark-mode'));
+        });
+
+        if (localStorage.getItem('darkMode') === 'true') {
+            body.classList.add('dark-mode');
+        }
+    }
+};
+
+-index.html: 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diario del Sueño Inteligente - Mejora tu descanso</title>
+    <meta name="description" content="Registra y analiza tus patrones de sueño para mejorar tu descanso y bienestar general con nuestro Diario del Sueño Inteligente.">
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Diario del Sueño Inteligente</h1>
+        <p>Registra tu sueño y recibe consejos personalizados para dormir mejor</p>
+
+        <div id="user-info"></div>
+        <button id="logout-button" style="display: none;">Cerrar Sesión</button>
+
+        <form id="sleep-form">
+            <label for="sleep-date">Fecha:</label>
+            <input type="date" id="sleep-date" required>
+
+            <label for="sleep-duration">Duración del Sueño (horas):</label>
+            <input type="number" id="sleep-duration" step="0.5" min="0" max="12" required>
+
+            <fieldset>
+                <legend>Calidad del Sueño</legend>
+                <input type="radio" id="quality-1" name="sleep-quality" value="1" required>
+                <label for="quality-1">1 (Muy Malo)</label>
+                <input type="radio" id="quality-2" name="sleep-quality" value="2">
+                <label for="quality-2">2 (Malo)</label>
+                <input type="radio" id="quality-3" name="sleep-quality" value="3">
+                <label for="quality-3">3 (Regular)</label>
+                <input type="radio" id="quality-4" name="sleep-quality" value="4">
+                <label for="quality-4">4 (Bueno)</label>
+                <input type="radio" id="quality-5" name="sleep-quality" value="5">
+                <label for="quality-5">5 (Excelente)</label>
+            </fieldset>
+
+            <button type="submit">Guardar Entrada</button>
+        </form>
+
+        <section id="consejos-personalizados" class="section">
+            <h2>Consejos Personalizados</h2>
+            <div id="consejos-content" class="consejos-content"></div>
+        </section>
+
+        <section id="historial-sueno" class="section">
+            <h2>Historial de Sueño</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Duración</th>
+                        <th>Calidad</th>
+                    </tr>
+                </thead>
+                <tbody id="historial-body"></tbody>
+            </table>
+        </section>
+
+        <section id="estadisticas-sueno" class="section">
+            <h2>Estadísticas de Sueño</h2>
+            <div id="estadisticas-content"></div>
+        </section>
+
+        <section id="consejos-programados" class="section">
+            <h2>Consejos Programados</h2>
+            <div id="lista-consejos-programados"></div>
+            <p>Próximo consejo en: <span id="contador-proximo-consejo">00:00:00</span></p>
+        </section>
+
+        <section id="chat-container" class="section">
+            <h2>Chat con Asistente de Sueño</h2>
+            <div id="chat-messages" class="chat-messages"></div>
+            <form id="chat-form">
+                <input type="text" id="chat-input" placeholder="Escribe tu mensaje...">
+                <button type="submit">Enviar</button>
+            </form>
+        </section>
+    </div>
+
+    <button id="dark-mode-toggle" class="dark-mode-toggle">Cambiar Modo</button>
+    <script type="module" src="./js/app.js"></script>
+    <script type="module" src="./js/chat.js"></script>
+    <script type="module" src="./js/sleepDiary.js"></script>
+    <script type="module" src="./js/ui.js"></script>
+</body>
+</html>
+
+-login.html: 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Diario del Sueño Inteligente</title>
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Iniciar Sesión</h1>
+        <form id="login-form">
+            <label for="username">Nombre de usuario:</label>
+            <input type="text" id="username" required>
+
+            <label for="password">Contraseña:</label>
+            <input type="password" id="password" required>
+
+            <button type="submit">Iniciar Sesión</button>
+        </form>
+        <p id="error-message" class="error-message"></p>
+    </div>
+    <script src="./js/login.js"></script>
+</body>
+</html>
+
+-auth.js:
+const jwt = require('jsonwebtoken');
+
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'No token provided' }));
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ message: 'Unauthorized' }));
+    }
+    req.userId = decoded.id;
+    next();
+  });
+};
+
+module.exports = { verifyToken };
+
+
+Dentro de routes estan los siguientes archivos: 
+-data.js: 
+const sleepData = new Map();
+
+const handleGetSleepData = (req, res) => {
+  const userId = req.userId;
+  console.log('Fetching sleep data for user:', userId);
+  if (sleepData.has(userId)) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ sleepEntries: sleepData.get(userId) }));
+  } else {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ sleepEntries: [] }));
+  }
+};
+
+const handlePostSleepData = (req, res) => {
+  const userId = req.userId;
+  try {
+    const sleepEntry = JSON.parse(req.body);
+    console.log('Adding sleep entry for user:', userId, sleepEntry);
+    if (!sleepData.has(userId)) {
+      sleepData.set(userId, []);
+    }
+    sleepData.get(userId).push(sleepEntry);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Data added successfully' }));
+  } catch (error) {
+    console.error('Error adding sleep entry:', error);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: error.message }));
+  }
+};
+
+module.exports = { handleGetSleepData, handlePostSleepData };
+
+-login.js: 
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const { users } = require('./users');
+
+const handleLogin = async (req, res) => {
+  try {
+    const { username, password } = JSON.parse(req.body);
+    console.log('Login attempt:', { username, password }); // Para depuración
+
+    const user = Array.from(users.values()).find(user => user.username === username);
+    
+    if (user && await bcrypt.compare(password, user.password)) {
+      const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      console.log('Login successful:', { username, userId: user.id }); // Para depuración
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ token, userId: user.id }));
+    } else {
+      console.log('Login failed:', { username }); // Para depuración
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'Invalid credentials' }));
+    }
+  } catch (error) {
+    console.error('Login error:', error); // Para depuración
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: error.message }));
+  }
+};
+
+module.exports = { handleLogin };
+
+-users.js: 
+const bcrypt = require('bcryptjs');
+
+const users = new Map();
+
+// Crear un usuario de prueba
+(async () => {
+  const hashedPassword = await bcrypt.hash('password123', 10);
+  users.set(1, { id: 1, username: 'testuser', password: hashedPassword });
+  console.log('Test user created:', { id: 1, username: 'testuser' });
+})();
+
+const handleGetUsers = (req, res) => {
+  const userList = Array.from(users.values()).map(({ id, username }) => ({ id, username }));
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(userList));
+};
+
+const handleCreateUser = async (req, res) => {
+  try {
+    const { username, password } = JSON.parse(req.body);
+    if (!username || !password) {
+      throw new Error('Missing username or password');
+    }
+    const id = users.size + 1;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    users.set(id, { id, username, password: hashedPassword });
+    console.log('New user created:', { id, username });
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Usuario creado', id, username }));
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: error.message }));
+  }
+};
+
+module.exports = { handleGetUsers, handleCreateUser, users };
+
+-server.js: 
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { URL } = require('url');
+const dotenv = require('dotenv');
+const { handleGetUsers, handleCreateUser } = require('./routes/users');
+const { handleLogin } = require('./routes/login');
+const { handleGetSleepData, handlePostSleepData } = require('./routes/data');
+const { verifyToken } = require('./middleware/auth');
+
+dotenv.config();
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
+
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Serve static files
+  if (pathname.startsWith('/js/') || pathname.startsWith('/css/') || pathname === '/index.html' || pathname === '/login.html' || pathname === '/') {
+    const filePath = path.join(__dirname, '..', 'public', pathname === '/' ? 'index.html' : pathname);
+    fs.readFile(filePath, (err, content) => {
+      if (err) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('404 Not Found');
+      } else {
+        const ext = path.extname(filePath);
+        let contentType = 'text/html';
+        if (ext === '.js') contentType = 'text/javascript';
+        if (ext === '.css') contentType = 'text/css';
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(content);
+      }
+    });
+    return;
+  }
+
+  // API routes
+  if (pathname.startsWith('/api/')) {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+
+    req.on('end', () => {
+      req.body = body;
+
+      switch (pathname) {
+        case '/api/users':
+          if (req.method === 'GET') {
+            verifyToken(req, res, () => handleGetUsers(req, res));
+          } else if (req.method === 'POST') {
+            handleCreateUser(req, res);
+          } else {
+            res.writeHead(405, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: 'Method not allowed' }));
+          }
+          break;
+        case '/api/login':
+          if (req.method === 'POST') {
+            handleLogin(req, res);
+          } else {
+            res.writeHead(405, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: 'Method not allowed' }));
+          }
+          break;
+        case '/api/data':
+          if (req.method === 'GET') {
+            verifyToken(req, res, () => handleGetSleepData(req, res));
+          } else if (req.method === 'POST') {
+            verifyToken(req, res, () => handlePostSleepData(req, res));
+          } else {
+            res.writeHead(405, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: 'Method not allowed' }));
+          }
+          break;
+        default:
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Not found' }));
+      }
+    });
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Not found' }));
+  }
+});
+
+const port = process.env.PORT || 3000;
+server.listen(port, () => console.log(`Server listening on port ${port}`));
+
+-.env: 
+JWT_SECRET=your_jwt_secret_key_here
+PORT=3000
