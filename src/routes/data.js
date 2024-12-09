@@ -1,26 +1,26 @@
-const sleepData = new Map();
+const SleepEntry = require('../models/SleepEntry');
 
-const handleGetSleepData = (req, res) => {
+const handleGetSleepData = async (req, res) => {
   const userId = req.userId;
   console.log('Fetching sleep data for user:', userId);
-  if (sleepData.has(userId)) {
+  try {
+    const sleepEntries = await SleepEntry.find({ userId });
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ sleepEntries: sleepData.get(userId) }));
-  } else {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ sleepEntries: [] }));
+    res.end(JSON.stringify({ sleepEntries }));
+  } catch (error) {
+    console.error('Error fetching sleep data:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Internal server error' }));
   }
 };
 
-const handlePostSleepData = (req, res) => {
+const handlePostSleepData = async (req, res) => {
   const userId = req.userId;
   try {
     const sleepEntry = JSON.parse(req.body);
     console.log('Adding sleep entry for user:', userId, sleepEntry);
-    if (!sleepData.has(userId)) {
-      sleepData.set(userId, []);
-    }
-    sleepData.get(userId).push(sleepEntry);
+    const newEntry = new SleepEntry({ ...sleepEntry, userId });
+    await newEntry.save();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Data added successfully' }));
   } catch (error) {
