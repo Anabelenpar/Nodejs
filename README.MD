@@ -79,6 +79,7 @@ La aplicación toma toda la información que el usuario ha ingresado y la presen
 - Calcula promedios
 - Destaca patrones (como si el usuario duerme menos los fines de semana)
 - Proporciona consejos personalizados en función a los datos introducidos
+- Existe un modo oscuro para que el usuario pueda elegir entre diferentes estilos de visualización según la cantidad de estímulo que quiera
 
 3.4 Sistema de Chat
 
@@ -236,6 +237,20 @@ Imagina que un usuario quiere registrar su sueño de anoche:
 8. El servidor confirma que todo salió bien y envía un mensaje de vuelta al usuario.
 9. La interfaz de usuario (ui.js) muestra un mensaje de "Datos guardados con éxito".
 
+6.6 Dependencias
+
+Es necesario para el funcionamiento tener instaladas estas dependencias:
+
+6.6.1 Dependencias de desarrollo:
+   - "nodemon": "^3.1.7"
+
+6.6.2 Dependencias de producción:
+   - "bcryptjs": "^2.4.3",
+   - "dotenv": "^10.0.0",
+   - "jsonwebtoken": "^8.5.1",
+   - "next": "^15.0.3",
+   - "react": "^18.3.1",
+   - "react-dom": "^18.3.1"
 
 7. Seguridad y privacidad 
 
