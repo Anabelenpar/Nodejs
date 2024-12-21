@@ -5,14 +5,12 @@ const verifyToken = (req, res, next) => {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ message: 'No token provided' }));
+    return res.status(401).json({ message: 'No token provided' });
   }
 
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ message: 'Unauthorized' }));
+      return res.status(401).json({ message: 'Invalid token' });
     }
     req.userId = decoded.id;
     next();

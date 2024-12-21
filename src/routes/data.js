@@ -1,28 +1,27 @@
-const sleepData = new Map();
+const sequelize = require('../config/database');
 
-const handleGetSleepData = (req, res) => {
+const handleGetSleepData = async (req, res) => {
   const userId = req.userId;
-  console.log('Fetching sleep data for user:', userId);
-  if (sleepData.has(userId)) {
+  try {
+    console.log('Fetching sleep data for user:', userId);
+    const sleepEntries = await sequelize.models.SleepEntry.findAll({ where: { userId } });
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ sleepEntries: sleepData.get(userId) }));
-  } else {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ sleepEntries: [] }));
+    res.end(JSON.stringify({ sleepEntries }));
+  } catch (error) {
+    console.error('Error fetching sleep data:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Internal server error' }));
   }
 };
 
-const handlePostSleepData = (req, res) => {
+const handlePostSleepData = async (req, res) => {
   const userId = req.userId;
   try {
     const sleepEntry = JSON.parse(req.body);
     console.log('Adding sleep entry for user:', userId, sleepEntry);
-    if (!sleepData.has(userId)) {
-      sleepData.set(userId, []);
-    }
-    sleepData.get(userId).push(sleepEntry);
+    const newEntry = await sequelize.models.SleepEntry.create({ ...sleepEntry, userId });
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Data added successfully' }));
+    res.end(JSON.stringify({ message: 'Data added successfully', entry: newEntry }));
   } catch (error) {
     console.error('Error adding sleep entry:', error);
     res.writeHead(400, { 'Content-Type': 'application/json' });

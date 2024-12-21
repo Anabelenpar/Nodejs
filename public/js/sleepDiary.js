@@ -9,16 +9,22 @@ export const sleepDiary = {
 
     async loadEntries() {
         try {
-            const response = await fetch('/api/data', {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                console.error('No token found');
+                return;
+            }
+            const response = await fetch('http://localhost:3000/api/data', {
                 headers: {
-                    'Authorization': `Bearer ${this.token}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
             if (response.ok) {
                 const data = await response.json();
                 this.sleepEntries = data.sleepEntries || [];
+                console.log('Sleep entries loaded:', this.sleepEntries);
             } else {
-                console.error('Failed to load sleep entries');
+                console.error('Failed to load sleep entries:', response.status, response.statusText);
             }
         } catch (error) {
             console.error('Error loading sleep entries:', error);
@@ -27,7 +33,7 @@ export const sleepDiary = {
 
     async addEntry(entry) {
         try {
-            const response = await fetch('/api/data', {
+            const response = await fetch('http://localhost:3000/api/data', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -37,6 +43,7 @@ export const sleepDiary = {
             });
             if (response.ok) {
                 this.sleepEntries.push(entry);
+                console.log('Sleep entry added:', entry);
             } else {
                 console.error('Failed to add sleep entry');
             }

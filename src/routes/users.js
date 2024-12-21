@@ -1,18 +1,18 @@
 const bcrypt = require('bcryptjs');
+const sequelize = require('../config/database');
 
-const users = new Map();
-
-// Crear un usuario de prueba
-(async () => {
-  const hashedPassword = await bcrypt.hash('password123', 10);
-  users.set(1, { id: 1, username: 'testuser', password: hashedPassword });
-  console.log('Test user created:', { id: 1, username: 'testuser' });
-})();
-
-const handleGetUsers = (req, res) => {
-  const userList = Array.from(users.values()).map(({ id, username }) => ({ id, username }));
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(userList));
+const handleGetUsers = async (req, res) => {
+  try {
+    const users = await sequelize.models.User.findAll({
+      attributes: ['id', 'username']
+    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(users));
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Internal server error' }));
+  }
 };
 
 const handleCreateUser = async (req, res) => {
@@ -21,12 +21,11 @@ const handleCreateUser = async (req, res) => {
     if (!username || !password) {
       throw new Error('Missing username or password');
     }
-    const id = users.size + 1;
     const hashedPassword = await bcrypt.hash(password, 10);
-    users.set(id, { id, username, password: hashedPassword });
-    console.log('New user created:', { id, username });
+    const user = await sequelize.models.User.create({ username, password: hashedPassword });
+    console.log('New user created:', { id: user.id, username: user.username });
     res.writeHead(201, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Usuario creado', id, username }));
+    res.end(JSON.stringify({ message: 'Usuario creado', id: user.id, username: user.username }));
   } catch (error) {
     console.error('Error creating user:', error);
     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -34,7 +33,7 @@ const handleCreateUser = async (req, res) => {
   }
 };
 
-module.exports = { handleGetUsers, handleCreateUser, users };
+module.exports = { handleGetUsers, handleCreateUser };
 
 
 
