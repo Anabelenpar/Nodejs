@@ -1,16 +1,16 @@
-const sequelize = require('../config/database');
+const { SleepEntry } = require('../models');
 
 const handleGetSleepData = async (req, res) => {
   const userId = req.userId;
   try {
     console.log('Fetching sleep data for user:', userId);
-    const sleepEntries = await sequelize.models.SleepEntry.findAll({ where: { userId } });
+    const sleepEntries = await SleepEntry.findAll({ where: { userId } });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ sleepEntries }));
   } catch (error) {
     console.error('Error fetching sleep data:', error);
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Internal server error' }));
+    res.end(JSON.stringify({ message: 'Internal server error', error: error.message }));
   }
 };
 
@@ -19,7 +19,7 @@ const handlePostSleepData = async (req, res) => {
   try {
     const sleepEntry = JSON.parse(req.body);
     console.log('Adding sleep entry for user:', userId, sleepEntry);
-    const newEntry = await sequelize.models.SleepEntry.create({ ...sleepEntry, userId });
+    const newEntry = await SleepEntry.create({ ...sleepEntry, userId });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Data added successfully', entry: newEntry }));
   } catch (error) {

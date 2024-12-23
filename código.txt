@@ -1,28 +1,37 @@
 Tengo una app con este arbol: 
 ├── package.json
+├── package-lock.json
 ├── public
-│   ├── css
-│   │   └── styles.css
-│   ├── index.html
-│   ├── js
-│   │   ├── app.js
-│   │   ├── chat.js
-│   │   ├── login.js
-│   │   ├── sleepDiary.js
-│   │   └── ui.js
-│   └── login.html
+│   ├── css
+│   │   └── styles.css
+│   ├── index.html
+│   ├── js
+│   │   ├── app.js
+│   │   ├── chat.js
+│   │   ├── login.js
+│   │   ├── sleepDiary.js
+│   │   └── ui.js
+│   └── login.html
 └── src
+    ├── config
+    │   └── database.js
     ├── middleware
-    │   └── auth.js
+    │   └── auth.js
+    ├── models
+    │   └── index.js
     ├── routes
-    │   ├── data.js
-    │   ├── login.js
-    │   └── users.js
-    └── server.js
+    │   ├── data.js
+    │   ├── login.js
+    │   ├── ollama.js
+    │   └── users.js
+    ├── server.js
+    └── services
+        └── ollamaService.js
+
     
     Los archivos uno por uno son los siguientes. 
     - Package.json: 
-    {
+ {
   "name": "sleep-diary",
   "version": "1.0.0",
   "main": "src/server.js",
@@ -35,17 +44,25 @@ Tengo una app con este arbol:
   "author": "Ana Belén",
   "license": "ISC",
   "description": "A smart sleep diary application",
-  
+  "engines": {
+    "node": ">=14.0.0"
+  },
   "devDependencies": {
     "nodemon": "^3.1.7"
   },
   "dependencies": {
+    "axios": "^1.7.9",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "jsonwebtoken": "^8.5.1",
     "next": "^15.0.3",
+    "ollama": "^0.4.4",
+    "pg": "^8.11.0",
+    "pg-hstore": "^2.3.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^8.5.1",
-    "dotenv": "^10.0.0"
+    "sequelize": "^6.32.1"
   }
 }
 
@@ -161,42 +178,60 @@ body.dark-mode {
     --border-color: #444444;
 }
 
--app.js: 
-import { sleepDiary } from './sleepDiary.js';
-import { ui } from './ui.js';
-import { chat } from './chat.js';
+.loading-message {
+  font-style: italic;
+  color: #888;
+}
 
+-app.js: 
+//Importamos módulos necesarios para la aplicación que son parte del programa.
+import { sleepDiary } from './sleepDiary.js'; // Maneja las funciones del diario de sueño.
+import { ui } from './ui.js'; // Controla la interfaz de usuario.
+import { chat } from './chat.js'; // Permite funcionalidades de chat.
+
+// Esperamos a que toda la página cargue completamente antes de ejecutar el código.
 document.addEventListener('DOMContentLoaded', async () => {
+    // Obtenemos el token y el ID del usuario guardados en el navegador.
+    // Esto se utiliza para verificar que el usuario haya iniciado sesión.
     const token = localStorage.getItem('token');
     const userId = localStorage.getItem('userId');
 
+    // Si no hay token o ID de usuario, redirigimos al usuario a la página de inicio de sesión.
     if (!token || !userId) {
-        window.location.href = 'login.html';
-        return;
+        window.location.href = 'login.html'; // Cambia la página actual a la de inicio de sesión.
+        return; // Detiene la ejecución del resto del código.
     }
 
+    // Inicia el módulo del diario de sueño con el token del usuario.
     try {
-        console.log('Initializing sleepDiary...');
+        console.log('Initializing sleepDiary...'); // Mensaje para saber qué está haciendo el programa.
         await sleepDiary.init(token);
+        // Inicia el módulo de la interfaz de usuario.
         console.log('Initializing UI...');
         ui.init();
+        // Inicia el módulo de chat.
         console.log('Initializing chat...');
         chat.init();
+        // Si todos los módulos se inician correctamente, mostramos este mensaje en la consola.
         console.log('All modules initialized successfully.');
 
-        // Mostrar información del usuario
-        const userInfo = document.getElementById('user-info');
-        userInfo.textContent = `Usuario conectado: ID ${userId}`;
+        // Muestra información del usuario en la página.
+        const userInfo = document.getElementById('user-info'); // Seleccionamos el área donde aparecerá la información.
+        userInfo.textContent = `Usuario conectado: ID ${userId}`; // Escribimos el ID del usuario conectado.
 
-        // Configurar el botón de cierre de sesión
-        const logoutButton = document.getElementById('logout-button');
-        logoutButton.style.display = 'block';
+        // Hacemos visible el botón de cierre de sesión y lo configuramos.
+        const logoutButton = document.getElementById('logout-button'); // Seleccionamos el botón.
+        logoutButton.style.display = 'block'; // Hacemos que el botón aparezca en la página.
+        // Añadimos una acción al botón: cuando se haga clic, cerrará la sesión.
         logoutButton.addEventListener('click', () => {
+            // Eliminamos el token y el ID del usuario del navegador para cerrar sesión.
             localStorage.removeItem('token');
             localStorage.removeItem('userId');
+            // Redirigimos al usuario de vuelta a la página de inicio de sesión.
             window.location.href = 'login.html';
         });
     } catch (error) {
+        // Si algo falla al inicializar la aplicación, mostramos un mensaje de error en la consola.
         console.error('Error initializing application:', error);
     }
 });
@@ -204,74 +239,75 @@ document.addEventListener('DOMContentLoaded', async () => {
 -chat.js
 export const chat = {
     init() {
-        this.initializeChat();
+      this.initializeChat();
     },
-
+  
     initializeChat() {
-        const chatForm = document.getElementById('chat-form');
-        const chatInput = document.getElementById('chat-input');
-        const chatMessages = document.getElementById('chat-messages');
-
-        chatForm.addEventListener('submit', (event) => {
-            event.preventDefault();
-            const message = chatInput.value.trim();
-
-            if (message) {
-                this.addMessage(message, 'user-message');
-                this.generateAIResponse(message);
-                chatInput.value = '';
-            }
-        });
-    },
-
-    addMessage(message, className) {
-        const chatMessages = document.getElementById('chat-messages');
-        const messageElement = document.createElement('div');
-        messageElement.classList.add(className);
-        messageElement.textContent = message;
-        chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    },
-
-    generateAIResponse(userMessage) {
-        const lowerMessage = userMessage.toLowerCase();
-        const responses = {
-            'hola': [
-                'Hola, soy tu Asistente de Sueño. ¿En qué puedo ayudarte hoy?',
-                '¡Bienvenido! Estoy aquí para ayudarte a mejorar tu sueño. ¿Tienes alguna pregunta específica?'
-            ],
-            'dormir': [
-                'Dormir bien es crucial para tu salud. ¿Tienes problemas para conciliar el sueño o mantenerte dormido?',
-                'Un buen sueño es la base de una vida saludable. ¿Qué aspectos de tu sueño te gustaría mejorar?'
-            ],
-            'insomnio': [
-                'El insomnio puede ser frustrante. Algunas estrategias útiles incluyen mantener un horario regular, crear un ambiente relajante y practicar técnicas de relajación. ¿Has probado alguna de estas?',
-                'Combatir el insomnio requiere paciencia. Podemos trabajar en identificar las causas y desarrollar un plan personalizado. ¿Cuánto tiempo llevas experimentando insomnio?'
-            ],
-            'consejos': [
-                'Algunos consejos generales para mejorar tu sueño incluyen: mantener un horario regular, crear un ambiente oscuro y fresco, evitar la cafeína y el alcohol antes de dormir, y practicar una rutina relajante antes de acostarte. ¿Cuál de estos te gustaría explorar más?',
-                'Para mejorar tu sueño, considera limitar el uso de dispositivos electrónicos antes de dormir, hacer ejercicio regularmente (pero no justo antes de acostarte), y manejar el estrés con técnicas de relajación. ¿Alguno de estos consejos te llama la atención?'
-            ],
-            'gracias': [
-                '¡De nada! Recuerda que mejorar tus hábitos de sueño es un proceso. Si tienes más preguntas en el futuro, no dudes en consultarme.',
-                'Es un placer ayudarte. Recuerda que un buen sueño es clave para tu salud física y mental. ¿Hay algo más en lo que pueda ayudarte?'
-            ]
-        };
-
-        let response = 'Entiendo que tienes una pregunta sobre el sueño. ¿Podrías ser más específico sobre qué aspecto te interesa o preocupa?';
-
-        for (let [keyword, responseOptions] of Object.entries(responses)) {
-            if (lowerMessage.includes(keyword)) {
-                response = responseOptions[Math.floor(Math.random() * responseOptions.length)];
-                break;
-            }
+      const chatForm = document.getElementById('chat-form');
+      const chatInput = document.getElementById('chat-input');
+      const chatMessages = document.getElementById('chat-messages');
+  
+      chatForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const message = chatInput.value.trim();
+  
+        if (message) {
+          this.addMessage(message, 'user-message');
+          chatInput.value = '';
+          await this.generateOllamaResponse(message);
         }
-
-        setTimeout(() => {
-            this.addMessage(response, 'ai-message');
-        }, 1000);
-    }
-};
+      });
+    },
+  
+    addMessage(message, className) {
+      const chatMessages = document.getElementById('chat-messages');
+      const messageElement = document.createElement('div');
+      className.split(' ').forEach(cls => messageElement.classList.add(cls));
+      messageElement.textContent = message;
+      chatMessages.appendChild(messageElement);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    },
+  
+    async generateOllamaResponse(userMessage) {
+      this.addMessage('Generando respuesta...', 'ai-message loading-message');
+      try {
+        console.log('Sending request to Ollama');
+        const response = await fetch('/api/ollama', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prompt: userMessage }),
+        });
+  
+        console.log('Received response from Ollama');
+        if (!response.ok) {
+          throw new Error(`Error en la respuesta del servidor: ${response.status}`);
+        }
+  
+        const data = await response.json();
+        console.log('Ollama response data:', data);
+        
+        // Eliminar el mensaje de carga
+        const loadingMessage = document.querySelector('.loading-message');
+        if (loadingMessage) {
+          loadingMessage.remove();
+        }
+  
+        this.addMessage(data.response, 'ai-message');
+      } catch (error) {
+        console.error('Error al generar respuesta de Ollama:', error);
+        
+        // Eliminar el mensaje de carga
+        const loadingMessage = document.querySelector('.loading-message');
+        if (loadingMessage) {
+          loadingMessage.remove();
+        }
+  
+        this.addMessage(`Error: ${error.message}. Por favor, intenta de nuevo más tarde.`, 'ai-message error');
+      }
+    },
+  };
 
 -login.js
 document.addEventListener('DOMContentLoaded', () => {
@@ -310,6 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+
 -sleepdiary.js: 
 export const sleepDiary = {
     sleepEntries: [],
@@ -322,16 +359,26 @@ export const sleepDiary = {
 
     async loadEntries() {
         try {
-            const response = await fetch('/api/data', {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                console.error('No token found');
+                return;
+            }
+            console.log('Token being sent:', token); // Añade esta línea para depuración
+            const response = await fetch('http://localhost:3000/api/data', {
                 headers: {
-                    'Authorization': `Bearer ${this.token}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
             if (response.ok) {
                 const data = await response.json();
                 this.sleepEntries = data.sleepEntries || [];
+                console.log('Sleep entries loaded:', this.sleepEntries);
             } else {
-                console.error('Failed to load sleep entries');
+                console.error('Failed to load sleep entries:', response.status, response.statusText);
+                // Añade esta línea para ver el cuerpo de la respuesta en caso de error
+                const errorBody = await response.text();
+                console.error('Error response body:', errorBody);
             }
         } catch (error) {
             console.error('Error loading sleep entries:', error);
@@ -340,7 +387,7 @@ export const sleepDiary = {
 
     async addEntry(entry) {
         try {
-            const response = await fetch('/api/data', {
+            const response = await fetch('http://localhost:3000/api/data', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -350,6 +397,7 @@ export const sleepDiary = {
             });
             if (response.ok) {
                 this.sleepEntries.push(entry);
+                console.log('Sleep entry added:', entry);
             } else {
                 console.error('Failed to add sleep entry');
             }
@@ -383,33 +431,49 @@ export const sleepDiary = {
         };
     },
 
-    generatePersonalizedTips(entry) {
-        let tips = [];
-        const stats = this.calculateStatistics();
+    async generatePersonalizedTips(entry) {
+        try {
+            const stats = this.calculateStatistics();
+            const prompt = `
+                Basado en los siguientes datos de sueño y estadísticas, genera consejos personalizados para mejorar la calidad del sueño:
+                
+                Entrada actual:
+                - Fecha: ${entry.date}
+                - Duración: ${entry.duration} horas
+                - Calidad: ${entry.quality}/5
+                
+                Estadísticas generales:
+                - Duración promedio: ${stats.avgDuration} horas
+                - Calidad promedio: ${stats.avgQuality}/5
+                - Total de entradas: ${stats.totalEntries}
+                - Promedio semanal: ${stats.weeklyAvgDuration} horas
+                
+                Por favor, proporciona 3 consejos específicos y personalizados basados en estos datos.
+            `;
 
-        if (entry.duration < 6) {
-            tips.push('Parece que dormiste poco. Intenta acostarte más temprano esta noche.');
-        } else if (entry.duration > 9) {
-            tips.push('Dormiste más de lo recomendado. Considera ajustar tu horario de sueño.');
-        }
+            const response = await fetch('/api/ollama', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ prompt }),
+            });
 
-        if (entry.quality < 3) {
-            tips.push('Tu calidad de sueño puede mejorar. Prueba técnicas de relajación antes de dormir.');
-        } else if (entry.quality >= 4) {
-            tips.push('¡Buen trabajo! Mantén tus hábitos de sueño actuales.');
-        }
-
-        if (stats) {
-            if (entry.duration < stats.avgDuration) {
-                tips.push(`Dormiste menos que tu promedio de ${stats.avgDuration} horas. Intenta mantener un horario más consistente.`);
+            if (!response.ok) {
+                throw new Error('Error en la respuesta del servidor');
             }
-            if (entry.quality < stats.avgQuality) {
-                tips.push(`La calidad de tu sueño fue menor que tu promedio de ${stats.avgQuality}. Considera factores que puedan estar afectando tu descanso.`);
-            }
-        }
 
-        return tips;
-    }
+            const data = await response.json();
+            return data.response.split('\n').filter(tip => tip.trim() !== '');
+        } catch (error) {
+            console.error('Error al generar consejos personalizados:', error);
+            return [
+                'Hubo un error al generar consejos personalizados.',
+                'Por favor, intenta nuevamente más tarde.',
+            ];
+        }
+    },
+
 };
 
 -ui.js
@@ -450,17 +514,23 @@ export const ui = {
         this.clearForm();
     },
 
-    showPersonalizedTips(entry) {
+    async showPersonalizedTips(entry) {
         const consejosContainer = document.getElementById('consejos-content');
-        consejosContainer.innerHTML = '';
+        consejosContainer.innerHTML = '<p>Generando consejos personalizados...</p>';
 
-        const tips = sleepDiary.generatePersonalizedTips(entry);
+        try {
+            const tips = await sleepDiary.generatePersonalizedTips(entry);
+            consejosContainer.innerHTML = '';
 
-        tips.forEach(tip => {
-            const tipElement = document.createElement('p');
-            tipElement.textContent = tip;
-            consejosContainer.appendChild(tipElement);
-        });
+            tips.forEach(tip => {
+                const tipElement = document.createElement('p');
+                tipElement.textContent = tip;
+                consejosContainer.appendChild(tipElement);
+            });
+        } catch (error) {
+            console.error('Error al mostrar consejos personalizados:', error);
+            consejosContainer.innerHTML = '<p>Error al generar consejos. Por favor, intenta nuevamente.</p>';
+        }
     },
 
     renderSleepHistory() {
@@ -689,6 +759,28 @@ export const ui = {
 </body>
 </html>
 
+-config/database.js:
+const { Sequelize } = require('sequelize');
+const dotenv = require('dotenv');
+
+dotenv.config();
+
+const database = process.env.DB_NAME || 'appsueño';
+const username = process.env.DB_USER || 'postgres';
+const password = process.env.DB_PASSWORD || 'changeme';
+const host = process.env.DB_HOST || 'localhost';
+
+const sequelize = new Sequelize(database, username, password, {
+  host,
+  dialect: 'postgres',
+  logging: console.log,
+  dialectOptions: {
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
+  }
+});
+
+module.exports = sequelize;
+
 -auth.js:
 const jwt = require('jsonwebtoken');
 
@@ -697,50 +789,90 @@ const verifyToken = (req, res, next) => {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.writeHead(401, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ message: 'No token provided' }));
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ message: 'Unauthorized' }));
-    }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.id;
     next();
-  });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ message: 'Invalid token', error: error.message }));
+  }
 };
 
 module.exports = { verifyToken };
 
+Dentro de models esta index.js:
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+const User = sequelize.define('User', {
+  username: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false
+  }
+}, { tableName: 'users' });
+
+const SleepEntry = sequelize.define('SleepEntry', {
+  date: {
+    type: DataTypes.DATEONLY,
+    allowNull: false
+  },
+  duration: {
+    type: DataTypes.FLOAT,
+    allowNull: false
+  },
+  quality: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  }
+}, { tableName: 'sleep_entries' });
+
+User.hasMany(SleepEntry, { as: 'sleepEntries', foreignKey: 'userId' });
+SleepEntry.belongsTo(User, { foreignKey: 'userId' });
+
+module.exports = {
+  sequelize,
+  User,
+  SleepEntry
+};
+
 
 Dentro de routes estan los siguientes archivos: 
 -data.js: 
-const sleepData = new Map();
+const { SleepEntry } = require('../models');
 
-const handleGetSleepData = (req, res) => {
+const handleGetSleepData = async (req, res) => {
   const userId = req.userId;
-  console.log('Fetching sleep data for user:', userId);
-  if (sleepData.has(userId)) {
+  try {
+    console.log('Fetching sleep data for user:', userId);
+    const sleepEntries = await SleepEntry.findAll({ where: { userId } });
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ sleepEntries: sleepData.get(userId) }));
-  } else {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ sleepEntries: [] }));
+    res.end(JSON.stringify({ sleepEntries }));
+  } catch (error) {
+    console.error('Error fetching sleep data:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Internal server error', error: error.message }));
   }
 };
 
-const handlePostSleepData = (req, res) => {
+const handlePostSleepData = async (req, res) => {
   const userId = req.userId;
   try {
     const sleepEntry = JSON.parse(req.body);
     console.log('Adding sleep entry for user:', userId, sleepEntry);
-    if (!sleepData.has(userId)) {
-      sleepData.set(userId, []);
-    }
-    sleepData.get(userId).push(sleepEntry);
+    const newEntry = await SleepEntry.create({ ...sleepEntry, userId });
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Data added successfully' }));
+    res.end(JSON.stringify({ message: 'Data added successfully', entry: newEntry }));
   } catch (error) {
     console.error('Error adding sleep entry:', error);
     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -753,50 +885,73 @@ module.exports = { handleGetSleepData, handlePostSleepData };
 -login.js: 
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { users } = require('./users');
+const { User } = require('../models');
 
 const handleLogin = async (req, res) => {
   try {
     const { username, password } = JSON.parse(req.body);
-    console.log('Login attempt:', { username, password }); // Para depuración
+    console.log('Login attempt:', { username });
 
-    const user = Array.from(users.values()).find(user => user.username === username);
+    const user = await User.findOne({ where: { username } });
     
     if (user && await bcrypt.compare(password, user.password)) {
       const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-      console.log('Login successful:', { username, userId: user.id }); // Para depuración
+      console.log('Login successful:', { username, userId: user.id });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ token, userId: user.id }));
     } else {
-      console.log('Login failed:', { username }); // Para depuración
+      console.log('Login failed:', { username });
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ message: 'Invalid credentials' }));
     }
   } catch (error) {
-    console.error('Login error:', error); // Para depuración
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: error.message }));
+    console.error('Login error:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Internal server error', error: error.message }));
   }
 };
 
 module.exports = { handleLogin };
 
+-ollama.js:
+const { generateResponse } = require('../services/ollamaService');
+
+const handleOllamaRequest = async (req, res) => {
+  try {
+    console.log('Received Ollama request');
+    const { prompt } = JSON.parse(req.body);
+    console.log('Prompt:', prompt);
+    
+    const response = await generateResponse(prompt);
+    console.log('Ollama response:', response);
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ response }));
+  } catch (error) {
+    console.error('Error in Ollama request:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Error processing Ollama request', error: error.message }));
+  }
+};
+
+module.exports = { handleOllamaRequest };
+
 -users.js: 
 const bcrypt = require('bcryptjs');
+const sequelize = require('../config/database');
 
-const users = new Map();
-
-// Crear un usuario de prueba
-(async () => {
-  const hashedPassword = await bcrypt.hash('password123', 10);
-  users.set(1, { id: 1, username: 'testuser', password: hashedPassword });
-  console.log('Test user created:', { id: 1, username: 'testuser' });
-})();
-
-const handleGetUsers = (req, res) => {
-  const userList = Array.from(users.values()).map(({ id, username }) => ({ id, username }));
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(userList));
+const handleGetUsers = async (req, res) => {
+  try {
+    const users = await sequelize.models.User.findAll({
+      attributes: ['id', 'username']
+    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(users));
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Internal server error' }));
+  }
 };
 
 const handleCreateUser = async (req, res) => {
@@ -805,12 +960,11 @@ const handleCreateUser = async (req, res) => {
     if (!username || !password) {
       throw new Error('Missing username or password');
     }
-    const id = users.size + 1;
     const hashedPassword = await bcrypt.hash(password, 10);
-    users.set(id, { id, username, password: hashedPassword });
-    console.log('New user created:', { id, username });
+    const user = await sequelize.models.User.create({ username, password: hashedPassword });
+    console.log('New user created:', { id: user.id, username: user.username });
     res.writeHead(201, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Usuario creado', id, username }));
+    res.end(JSON.stringify({ message: 'Usuario creado', id: user.id, username: user.username }));
   } catch (error) {
     console.error('Error creating user:', error);
     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -818,7 +972,7 @@ const handleCreateUser = async (req, res) => {
   }
 };
 
-module.exports = { handleGetUsers, handleCreateUser, users };
+module.exports = { handleGetUsers, handleCreateUser };
 
 -server.js: 
 const http = require('http');
@@ -826,100 +980,149 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const dotenv = require('dotenv');
+const bcrypt = require('bcryptjs');
+const cors = require('cors');
+const { sequelize, User, SleepEntry } = require('./models');
 const { handleGetUsers, handleCreateUser } = require('./routes/users');
 const { handleLogin } = require('./routes/login');
 const { handleGetSleepData, handlePostSleepData } = require('./routes/data');
 const { verifyToken } = require('./middleware/auth');
+const { handleOllamaRequest } = require('./routes/ollama');
 
 dotenv.config();
 
+// Initialize database
+const initDatabase = async () => {
+  try {
+    await sequelize.authenticate();
+    console.log('Database connection has been established successfully.');
+    await sequelize.sync({ alter: true });
+    console.log('Database synchronized');
+
+    // Create test user if not exists
+    const [testUser, created] = await User.findOrCreate({
+      where: { username: 'testuser' },
+      defaults: {
+        password: await bcrypt.hash('password123', 10)
+      }
+    });
+    if (created) {
+      console.log('Test user created:', testUser.toJSON());
+    } else {
+      console.log('Test user already exists');
+    }
+  } catch (error) {
+    console.error('Unable to connect to the database:', error);
+    process.exit(1);  // Exit the process if database connection fails
+  }
+};
+
+initDatabase();
+
+const corsOptions = {
+  origin: 'http://localhost:3000',
+  optionsSuccessStatus: 200
+};
+
 const server = http.createServer((req, res) => {
+  console.log('Received request:', req.method, req.url);
+
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // Apply CORS
+  cors(corsOptions)(req, res, () => {
+    // Serve static files
+    if (pathname.startsWith('/js/') || pathname.startsWith('/css/') || pathname === '/index.html' || pathname === '/login.html' || pathname === '/') {
+      const filePath = path.join(__dirname, '..', 'public', pathname === '/' ? 'index.html' : pathname);
+      fs.readFile(filePath, (err, content) => {
+        if (err) {
+          console.error('Error reading file:', filePath, err);
+          res.writeHead(404, { 'Content-Type': 'text/html' });
+          res.end('404 Not Found');
+        } else {
+          const ext = path.extname(filePath);
+          let contentType = 'text/html';
+          if (ext === '.js') contentType = 'text/javascript';
+          if (ext === '.css') contentType = 'text/css';
+          res.writeHead(200, { 'Content-Type': contentType });
+          res.end(content);
+        }
+      });
+      return;
+    }
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+    // API routes
+    if (pathname.startsWith('/api/')) {
+      let body = '';
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
 
-  // Serve static files
-  if (pathname.startsWith('/js/') || pathname.startsWith('/css/') || pathname === '/index.html' || pathname === '/login.html' || pathname === '/') {
-    const filePath = path.join(__dirname, '..', 'public', pathname === '/' ? 'index.html' : pathname);
-    fs.readFile(filePath, (err, content) => {
-      if (err) {
-        res.writeHead(404, { 'Content-Type': 'text/html' });
-        res.end('404 Not Found');
-      } else {
-        const ext = path.extname(filePath);
-        let contentType = 'text/html';
-        if (ext === '.js') contentType = 'text/javascript';
-        if (ext === '.css') contentType = 'text/css';
-        res.writeHead(200, { 'Content-Type': contentType });
-        res.end(content);
-      }
-    });
-    return;
-  }
+      req.on('end', () => {
+        req.body = body;
+        console.log('Request body:', body);
 
-  // API routes
-  if (pathname.startsWith('/api/')) {
-    let body = '';
-    req.on('data', chunk => {
-      body += chunk.toString();
-    });
-
-    req.on('end', () => {
-      req.body = body;
-
-      switch (pathname) {
-        case '/api/users':
-          if (req.method === 'GET') {
-            verifyToken(req, res, () => handleGetUsers(req, res));
-          } else if (req.method === 'POST') {
-            handleCreateUser(req, res);
-          } else {
-            res.writeHead(405, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Method not allowed' }));
-          }
-          break;
-        case '/api/login':
-          if (req.method === 'POST') {
-            handleLogin(req, res);
-          } else {
-            res.writeHead(405, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Method not allowed' }));
-          }
-          break;
-        case '/api/data':
-          if (req.method === 'GET') {
-            verifyToken(req, res, () => handleGetSleepData(req, res));
-          } else if (req.method === 'POST') {
-            verifyToken(req, res, () => handlePostSleepData(req, res));
-          } else {
-            res.writeHead(405, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'Method not allowed' }));
-          }
-          break;
-        default:
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ message: 'Not found' }));
-      }
-    });
-  } else {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Not found' }));
-  }
+        switch (pathname) {
+          case '/api/users':
+            if (req.method === 'GET') {
+              verifyToken(req, res, () => handleGetUsers(req, res));
+            } else if (req.method === 'POST') {
+              handleCreateUser(req, res);
+            } else {
+              res.writeHead(405, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ message: 'Method not allowed' }));
+            }
+            break;
+          case '/api/login':
+            if (req.method === 'POST') {
+              handleLogin(req, res);
+            } else {
+              res.writeHead(405, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ message: 'Method not allowed' }));
+            }
+            break;
+          case '/api/data':
+            if (req.method === 'GET') {
+              verifyToken(req, res, () => handleGetSleepData(req, res));
+            } else if (req.method === 'POST') {
+              verifyToken(req, res, () => handlePostSleepData(req, res));
+            } else {
+              res.writeHead(405, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ message: 'Method not allowed' }));
+            }
+            break;
+          case '/api/ollama':
+            if (req.method === 'POST') {
+              handleOllamaRequest(req, res);
+            } else {
+              res.writeHead(405, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ message: 'Method not allowed' }));
+            }
+            break;
+          default:
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: 'Not found' }));
+        }
+      });
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'Not found' }));
+    }
+  });
 });
 
 const port = process.env.PORT || 3000;
-server.listen(port, () => console.log(`Server listening on port ${port}`));
+const host = '0.0.0.0';
+server.listen(port, host, () => console.log(`Server listening on http://${host}:${port}`));
+
+
 
 -.env: 
+OLLAMA_API_URL=http://localhost:11434/api/generate
 JWT_SECRET=your_jwt_secret_key_here
 PORT=3000
+DB_NAME=appsueño
+DB_USER=postgres
+DB_PASSWORD=changeme
+DB_HOST=localhost

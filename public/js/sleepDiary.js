@@ -1,58 +1,79 @@
+import { auth } from './auth.js';
+
 export const sleepDiary = {
-    sleepEntries: [],
-    token: null,
+  sleepEntries: [],
+  token: null,
 
-    async init(token) {
-        this.token = token;
-        await this.loadEntries();
-    },
+  async init() {
+    try {
+      this.token = await auth.getValidToken();
+      await this.loadEntries();
+    } catch (error) {
+      console.error('Error initializing sleep diary:', error);
+    }
+  },
 
-    async loadEntries() {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                console.error('No token found');
-                return;
-            }
-            const response = await fetch('http://localhost:3000/api/data', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                this.sleepEntries = data.sleepEntries || [];
-                console.log('Sleep entries loaded:', this.sleepEntries);
-            } else {
-                console.error('Failed to load sleep entries:', response.status, response.statusText);
-            }
-        } catch (error) {
-            console.error('Error loading sleep entries:', error);
+  async loadEntries() {
+    try {
+      const response = await fetch('http://localhost:3000/api/data', {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
         }
-    },
-
-    async addEntry(entry) {
+      });
+      if (response.ok) {
+        const data = await response.json();
+        this.sleepEntries = data.sleepEntries || [];
+        console.log('Sleep entries loaded:', this.sleepEntries);
+      } else {
+        throw new Error(`Failed to load sleep entries: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error loading sleep entries:', error);
+      const errorBody = await response.text();
+      console.error('Error response body:', errorBody);
+      if (error.message.includes('401')) {
+        // Token might have expired during the request, try to refresh and retry
         try {
-            const response = await fetch('http://localhost:3000/api/data', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.token}`
-                },
-                body: JSON.stringify(entry)
-            });
-            if (response.ok) {
-                this.sleepEntries.push(entry);
-                console.log('Sleep entry added:', entry);
-            } else {
-                console.error('Failed to add sleep entry');
-            }
-        } catch (error) {
-            console.error('Error adding sleep entry:', error);
+          this.token = await auth.refreshToken();
+          await this.loadEntries(); // Retry loading entries with new token
+        } catch (refreshError) {
+          console.error('Error refreshing token:', refreshError);
         }
-    },
+      }
+    }
+  },
 
-    calculateStatistics() {
+  async addEntry(entry) {
+    try {
+      const response = await fetch('http://localhost:3000/api/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`
+        },
+        body: JSON.stringify(entry)
+      });
+      if (response.ok) {
+        this.sleepEntries.push(entry);
+        console.log('Sleep entry added:', entry);
+      } else {
+        throw new Error('Failed to add sleep entry');
+      }
+    } catch (error) {
+      console.error('Error adding sleep entry:', error);
+      if (error.message.includes('401')) {
+        // Token might have expired during the request, try to refresh and retry
+        try {
+          this.token = await auth.refreshToken();
+          await this.addEntry(entry); // Retry adding entry with new token
+        } catch (refreshError) {
+          console.error('Error refreshing token:', refreshError);
+        }
+      }
+    }
+  },
+
+  calculateStatistics() {
         if (this.sleepEntries.length === 0) return null;
 
         const totalDuration = this.sleepEntries.reduce((sum, entry) => sum + entry.duration, 0);
@@ -77,31 +98,52 @@ export const sleepDiary = {
         };
     },
 
-    generatePersonalizedTips(entry) {
-        let tips = [];
-        const stats = this.calculateStatistics();
+    async generatePersonalizedTips(entry) {
+        try {
+            const stats = this.calculateStatistics();
+            const prompt = `
+                Basado en los siguientes datos de sueño y estadísticas, genera consejos personalizados para mejorar la calidad del sueño:
+                
+                Entrada actual:
+                - Fecha: ${entry.date}
+                - Duración: ${entry.duration} horas
+                - Calidad: ${entry.quality}/5
+                
+                Estadísticas generales:
+                - Duración promedio: ${stats.avgDuration} horas
+                - Calidad promedio: ${stats.avgQuality}/5
+                - Total de entradas: ${stats.totalEntries}
+                - Promedio semanal: ${stats.weeklyAvgDuration} horas
+                
+                Por favor, proporciona 3 consejos específicos y personalizados basados en estos datos.
+            `;
 
-        if (entry.duration < 6) {
-            tips.push('Parece que dormiste poco. Intenta acostarte más temprano esta noche.');
-        } else if (entry.duration > 9) {
-            tips.push('Dormiste más de lo recomendado. Considera ajustar tu horario de sueño.');
-        }
+            const response = await fetch('/api/ollama', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ prompt }),
+            });
 
-        if (entry.quality < 3) {
-            tips.push('Tu calidad de sueño puede mejorar. Prueba técnicas de relajación antes de dormir.');
-        } else if (entry.quality >= 4) {
-            tips.push('¡Buen trabajo! Mantén tus hábitos de sueño actuales.');
-        }
-
-        if (stats) {
-            if (entry.duration < stats.avgDuration) {
-                tips.push(`Dormiste menos que tu promedio de ${stats.avgDuration} horas. Intenta mantener un horario más consistente.`);
+            if (!response.ok) {
+                throw new Error(`Error en la respuesta del servidor: ${response.status}`);
             }
-            if (entry.quality < stats.avgQuality) {
-                tips.push(`La calidad de tu sueño fue menor que tu promedio de ${stats.avgQuality}. Considera factores que puedan estar afectando tu descanso.`);
-            }
-        }
 
-        return tips;
-    }
+            const data = await response.json();
+            console.log('Respuesta de Ollama para consejos:', data);
+
+            if (data && data.response) {
+                return data.response.split('\n').filter(tip => tip.trim() !== '');
+            } else {
+                throw new Error('Respuesta vacía del servidor');
+            }
+        } catch (error) {
+            console.error('Error al generar consejos personalizados:', error);
+            return [
+                'Hubo un error al generar consejos personalizados.',
+                'Por favor, intenta nuevamente más tarde.',
+            ];
+        }
+    },
 };

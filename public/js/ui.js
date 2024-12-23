@@ -35,17 +35,23 @@ export const ui = {
         this.clearForm();
     },
 
-    showPersonalizedTips(entry) {
+    async showPersonalizedTips(entry) {
         const consejosContainer = document.getElementById('consejos-content');
-        consejosContainer.innerHTML = '';
+        consejosContainer.innerHTML = '<p>Generando consejos personalizados...</p>';
 
-        const tips = sleepDiary.generatePersonalizedTips(entry);
+        try {
+            const tips = await sleepDiary.generatePersonalizedTips(entry);
+            consejosContainer.innerHTML = '';
 
-        tips.forEach(tip => {
-            const tipElement = document.createElement('p');
-            tipElement.textContent = tip;
-            consejosContainer.appendChild(tipElement);
-        });
+            tips.forEach(tip => {
+                const tipElement = document.createElement('p');
+                tipElement.textContent = tip;
+                consejosContainer.appendChild(tipElement);
+            });
+        } catch (error) {
+            console.error('Error al mostrar consejos personalizados:', error);
+            consejosContainer.innerHTML = '<p>Error al generar consejos. Por favor, intenta nuevamente.</p>';
+        }
     },
 
     renderSleepHistory() {
