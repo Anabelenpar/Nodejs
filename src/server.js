@@ -1,4 +1,3 @@
-// Requerimos módulos necesarios para nuestro servidor y base de datos
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -13,159 +12,144 @@ const { handleGetSleepData, handlePostSleepData } = require('./routes/data');
 const { verifyToken } = require('./middleware/auth');
 const { handleOllamaRequest } = require('./routes/ollama');
 const jwt = require('jsonwebtoken');
+const auth = require('./services/auth');
 
-// Cargar las variables de entorno desde el archivo .env
 dotenv.config();
 
-// Función para inicializar la base de datos y probar la conexión
 const initDatabase = async () => {
   try {
-    // Intentamos conectar a la base de datos
     await sequelize.authenticate();
     console.log('Database connection has been established successfully.');
-
-    // Sincronizamos la base de datos (creamos o actualizamos las tablas necesarias)
     await sequelize.sync({ alter: true });
     console.log('Database synchronized');
 
-    // Intentamos crear un usuario de prueba si no existe
     const [testUser, created] = await User.findOrCreate({
       where: { username: 'testuser' },
       defaults: {
-        password: await bcrypt.hash('password123', 10) // Encriptamos la contraseña antes de guardarla
+        password: await bcrypt.hash('password123', 10)
       }
     });
-
     if (created) {
       console.log('Test user created:', testUser.toJSON());
     } else {
       console.log('Test user already exists');
     }
   } catch (error) {
-    // Si no podemos conectar a la base de datos, mostramos un error y detenemos el programa
     console.error('Unable to connect to the database:', error);
     process.exit(1);
   }
 };
 
-// Llamamos a la función para inicializar la base de datos
 initDatabase();
 
-// Configuración de CORS (control de qué sitios pueden acceder a nuestro servidor)
 const corsOptions = {
-  origin: 'http://localhost:3000',
-  optionsSuccessStatus: 200
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://0.0.0.0:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200,
+  allowPrivateNetwork: true
 };
 
-// Función para manejar la solicitud de refresco de token (cuando el token de acceso ha expirado)
 const handleRefreshToken = async (req, res) => {
-  const { refreshToken } = JSON.parse(req.body); // Obtenemos el refresh token de la solicitud
+  const { refreshToken } = JSON.parse(req.body);
   if (!refreshToken) {
-    // Si no hay refresh token, respondemos con un error
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ message: 'Refresh token is required' }));
   }
 
   try {
-    // Verificamos el refresh token y decodificamos la información del usuario
-    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-    const user = await User.findByPk(decoded.id); // Buscamos al usuario en la base de datos
-
-    if (!user) {
-      // Si no encontramos al usuario, respondemos con un error
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ message: 'User not found' }));
-    }
-
-    // Si todo está bien, generamos un nuevo token de acceso y refresh token
-    const newToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const newRefreshToken = jwt.sign({ id: user.id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
-
-    // Enviamos los nuevos tokens al cliente
+    const { token, refreshToken: newRefreshToken } = await auth.refreshToken(refreshToken);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ token: newToken, refreshToken: newRefreshToken }));
+    res.end(JSON.stringify({ token, refreshToken: newRefreshToken }));
   } catch (error) {
-    // Si hay un error al verificar el refresh token, respondemos con un error
     console.error('Error refreshing token:', error);
     res.writeHead(401, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Invalid refresh token' }));
   }
 };
 
-// Función para verificar si un token es válido
-const handleVerifyToken = (req, res) => {
+const handleVerifyToken = async (req, res) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Extraemos el token de la cabecera
+  const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    // Si no hay token, respondemos con un error
     res.writeHead(401, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ message: 'No token provided' }));
   }
 
   try {
-    // Verificamos si el token es válido
-    jwt.verify(token, process.env.JWT_SECRET);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Token is valid' }));
+    const isValid = await auth.verifyToken(token);
+    if (isValid) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'Token is valid' }));
+    } else {
+      throw new Error('Invalid token');
+    }
   } catch (error) {
-    // Si el token no es válido, respondemos con un error
     console.error('Token verification error:', error);
     res.writeHead(401, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Invalid token' }));
   }
 };
 
-// Creamos el servidor que manejará las solicitudes HTTP
 const server = http.createServer((req, res) => {
-  console.log('Received request:', req.method, req.url); // Mostramos en consola la solicitud recibida
+  console.log('Received request:', req.method, req.url);
 
-  const url = new URL(req.url, `http://${req.headers.host}`); // Creamos un objeto URL a partir de la solicitud
-  const pathname = url.pathname; // Obtenemos el camino (path) de la URL
+  // Set CORS headers for all responses
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', corsOptions.methods.join(','));
+  res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(','));
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
-  // Configuramos CORS para permitir solicitudes desde localhost:3000
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
+
+  // Apply CORS to all routes
   cors(corsOptions)(req, res, () => {
-    // Si la solicitud es para un archivo estático (js, css, html), lo enviamos como respuesta
     if (pathname.startsWith('/js/') || pathname.startsWith('/css/') || pathname === '/index.html' || pathname === '/login.html' || pathname === '/') {
-      const filePath = path.join(__dirname, '..', 'public', pathname === '/' ? 'index.html' : pathname); // Construimos la ruta del archivo solicitado
-      fs.readFile(filePath, (err, content) => { // Leemos el archivo
+      const filePath = path.join(__dirname, '..', 'public', pathname === '/' ? 'index.html' : pathname);
+      fs.readFile(filePath, (err, content) => {
         if (err) {
-          // Si hay un error leyendo el archivo, respondemos con un error 404
           console.error('Error reading file:', filePath, err);
           res.writeHead(404, { 'Content-Type': 'text/html' });
           res.end('404 Not Found');
         } else {
-          const ext = path.extname(filePath); // Obtenemos la extensión del archivo
-          let contentType = 'text/html'; // Establecemos el tipo de contenido predeterminado
-
-          // Establecemos el tipo de contenido según la extensión del archivo
+          const ext = path.extname(filePath);
+          let contentType = 'text/html';
           if (ext === '.js') contentType = 'text/javascript';
           if (ext === '.css') contentType = 'text/css';
           res.writeHead(200, { 'Content-Type': contentType });
-          res.end(content); // Enviamos el archivo al cliente
+          res.end(content);
         }
       });
       return;
     }
 
-    // Si la solicitud es para la API
     if (pathname.startsWith('/api/')) {
       let body = '';
       req.on('data', chunk => {
-        body += chunk.toString(); // Acumulamos los datos recibidos en el cuerpo de la solicitud
+        body += chunk.toString();
       });
 
       req.on('end', () => {
         req.body = body;
-        console.log('Request body:', body); // Mostramos en consola el cuerpo de la solicitud
+        console.log('Request body:', body);
 
-        // Verificamos la ruta y el método HTTP para decidir qué hacer
         switch (pathname) {
           case '/api/users':
             if (req.method === 'GET') {
-              verifyToken(req, res, () => handleGetUsers(req, res)); // Verificamos el token antes de obtener los usuarios
+              verifyToken(req, res, () => handleGetUsers(req, res));
             } else if (req.method === 'POST') {
-              handleCreateUser(req, res); // Creamos un nuevo usuario
+              handleCreateUser(req, res);
             } else {
               res.writeHead(405, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ message: 'Method not allowed' }));
@@ -173,7 +157,7 @@ const server = http.createServer((req, res) => {
             break;
           case '/api/login':
             if (req.method === 'POST') {
-              handleLogin(req, res); // Manejamos el inicio de sesión
+              handleLogin(req, res);
             } else {
               res.writeHead(405, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ message: 'Method not allowed' }));
@@ -181,9 +165,9 @@ const server = http.createServer((req, res) => {
             break;
           case '/api/data':
             if (req.method === 'GET') {
-              verifyToken(req, res, () => handleGetSleepData(req, res)); // Obtenemos los datos del sueño
+              verifyToken(req, res, () => handleGetSleepData(req, res));
             } else if (req.method === 'POST') {
-              verifyToken(req, res, () => handlePostSleepData(req, res)); // Enviamos los datos del sueño
+              verifyToken(req, res, () => handlePostSleepData(req, res));
             } else {
               res.writeHead(405, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ message: 'Method not allowed' }));
@@ -191,7 +175,7 @@ const server = http.createServer((req, res) => {
             break;
           case '/api/ollama':
             if (req.method === 'POST') {
-              handleOllamaRequest(req, res); // Manejamos la solicitud de Ollama
+              handleOllamaRequest(req, res);
             } else {
               res.writeHead(405, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ message: 'Method not allowed' }));
@@ -199,7 +183,7 @@ const server = http.createServer((req, res) => {
             break;
           case '/api/refresh-token':
             if (req.method === 'POST') {
-              handleRefreshToken(req, res); // Refrescamos el token de acceso
+              handleRefreshToken(req, res);
             } else {
               res.writeHead(405, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ message: 'Method not allowed' }));
@@ -207,7 +191,7 @@ const server = http.createServer((req, res) => {
             break;
           case '/api/verify-token':
             if (req.method === 'GET') {
-              handleVerifyToken(req, res); // Verificamos si el token es válido
+              handleVerifyToken(req, res);
             } else {
               res.writeHead(405, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ message: 'Method not allowed' }));
@@ -219,18 +203,12 @@ const server = http.createServer((req, res) => {
         }
       });
     } else {
-      // Si la ruta no es válida, respondemos con un error 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ message: 'Not found' }));
     }
   });
 });
 
-// Iniciamos el servidor en el puerto especificado o 3000 por defecto
 const port = process.env.PORT || 3000;
 const host = '0.0.0.0';
 server.listen(port, host, () => console.log(`Server listening on http://${host}:${port}`));
-
-
-
-

@@ -1,88 +1,88 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Diario del Sueño Inteligente - Mejora tu descanso</title>
-    <meta name="description" content="Registra y analiza tus patrones de sueño para mejorar tu descanso y bienestar general con nuestro Diario del Sueño Inteligente.">
-    <link rel="stylesheet" href="./css/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diario del Sueño Inteligente - Mejora tu descanso</title>
+  <meta name="description" content="Registra y analiza tus patrones de sueño para mejorar tu descanso y bienestar general con nuestro Diario del Sueño Inteligente.">
+  <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Diario del Sueño Inteligente</h1>
-        <p>Registra tu sueño y recibe consejos personalizados para dormir mejor</p>
+  <div class="container">
+      <h1>Diario del Sueño Inteligente</h1>
+      <p>Registra tu sueño y recibe consejos personalizados para dormir mejor</p>
 
-        <div id="user-info"></div>
-        <button id="logout-button" style="display: none;">Cerrar Sesión</button>
+      <div id="user-info"></div>
+      <button id="logout-button" style="display: none;">Cerrar Sesión</button>
 
-        <form id="sleep-form">
-            <label for="sleep-date">Fecha:</label>
-            <input type="date" id="sleep-date" required>
+      <form id="sleep-form">
+          <label for="sleep-date">Fecha:</label>
+          <input type="date" id="sleep-date" required>
 
-            <label for="sleep-duration">Duración del Sueño (horas):</label>
-            <input type="number" id="sleep-duration" step="0.5" min="0" max="12" required>
+          <label for="sleep-duration">Duración del Sueño (horas):</label>
+          <input type="number" id="sleep-duration" step="0.5" min="0" max="12" required>
 
-            <fieldset>
-                <legend>Calidad del Sueño</legend>
-                <input type="radio" id="quality-1" name="sleep-quality" value="1" required>
-                <label for="quality-1">1 (Muy Malo)</label>
-                <input type="radio" id="quality-2" name="sleep-quality" value="2">
-                <label for="quality-2">2 (Malo)</label>
-                <input type="radio" id="quality-3" name="sleep-quality" value="3">
-                <label for="quality-3">3 (Regular)</label>
-                <input type="radio" id="quality-4" name="sleep-quality" value="4">
-                <label for="quality-4">4 (Bueno)</label>
-                <input type="radio" id="quality-5" name="sleep-quality" value="5">
-                <label for="quality-5">5 (Excelente)</label>
-            </fieldset>
+          <fieldset>
+              <legend>Calidad del Sueño</legend>
+              <input type="radio" id="quality-1" name="sleep-quality" value="1" required>
+              <label for="quality-1">1 (Muy Malo)</label>
+              <input type="radio" id="quality-2" name="sleep-quality" value="2">
+              <label for="quality-2">2 (Malo)</label>
+              <input type="radio" id="quality-3" name="sleep-quality" value="3">
+              <label for="quality-3">3 (Regular)</label>
+              <input type="radio" id="quality-4" name="sleep-quality" value="4">
+              <label for="quality-4">4 (Bueno)</label>
+              <input type="radio" id="quality-5" name="sleep-quality" value="5">
+              <label for="quality-5">5 (Excelente)</label>
+          </fieldset>
 
-            <button type="submit">Guardar Entrada</button>
-        </form>
+          <button type="submit">Guardar Entrada</button>
+      </form>
 
-        <section id="consejos-personalizados" class="section">
-            <h2>Consejos Personalizados</h2>
-            <div id="consejos-content" class="consejos-content"></div>
-        </section>
+      <section id="consejos-personalizados" class="section">
+          <h2>Consejos Personalizados</h2>
+          <div id="consejos-content" class="consejos-content"></div>
+      </section>
 
-        <section id="historial-sueno" class="section">
-            <h2>Historial de Sueño</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Duración</th>
-                        <th>Calidad</th>
-                    </tr>
-                </thead>
-                <tbody id="historial-body"></tbody>
-            </table>
-        </section>
+      <section id="historial-sueno" class="section">
+          <h2>Historial de Sueño</h2>
+          <table>
+              <thead>
+                  <tr>
+                      <th>Fecha</th>
+                      <th>Duración</th>
+                      <th>Calidad</th>
+                  </tr>
+              </thead>
+              <tbody id="historial-body"></tbody>
+          </table>
+      </section>
 
-        <section id="estadisticas-sueno" class="section">
-            <h2>Estadísticas de Sueño</h2>
-            <div id="estadisticas-content"></div>
-        </section>
+      <section id="estadisticas-sueno" class="section">
+          <h2>Estadísticas de Sueño</h2>
+          <div id="estadisticas-content"></div>
+      </section>
 
-        <section id="consejos-programados" class="section">
-            <h2>Consejos Programados</h2>
-            <div id="lista-consejos-programados"></div>
-            <p>Próximo consejo en: <span id="contador-proximo-consejo">00:00:00</span></p>
-        </section>
+      <section id="consejos-programados" class="section">
+          <h2>Consejos Programados</h2>
+          <div id="lista-consejos-programados"></div>
+          <p>Próximo consejo en: <span id="contador-proximo-consejo">00:00:00</span></p>
+      </section>
 
-        <section id="chat-container" class="section">
-            <h2>Chat con Asistente de Sueño</h2>
-            <div id="chat-messages" class="chat-messages"></div>
-            <form id="chat-form">
-                <input type="text" id="chat-input" placeholder="Escribe tu mensaje...">
-                <button type="submit">Enviar</button>
-            </form>
-        </section>
-    </div>
+      <section id="chat-container" class="section">
+          <h2>Chat con Asistente de Sueño</h2>
+          <div id="chat-messages" class="chat-messages"></div>
+          <form id="chat-form">
+              <input type="text" id="chat-input" placeholder="Escribe tu mensaje...">
+              <button type="submit">Enviar</button>
+          </form>
+      </section>
+  </div>
 
-    <button id="dark-mode-toggle" class="dark-mode-toggle">Cambiar Modo</button>
-    <script type="module" src="./js/app.js"></script>
-    <script type="module" src="./js/chat.js"></script>
-    <script type="module" src="./js/sleepDiary.js"></script>
-    <script type="module" src="./js/ui.js"></script>
+  <button id="dark-mode-toggle" class="dark-mode-toggle">Cambiar Modo</button>
+  <script type="module" src="./js/app.js"></script>
+  <script type="module" src="./js/chat.js"></script>
+  <script type="module" src="./js/sleepDiary.js"></script>
+  <script type="module" src="./js/ui.js"></script>
 </body>
 </html>
